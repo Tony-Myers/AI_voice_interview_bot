@@ -40,7 +40,7 @@ After each user response, provide brief feedback and ask a relevant follow-up qu
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             max_tokens=300,
             n=1,
