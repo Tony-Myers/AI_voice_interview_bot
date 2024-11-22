@@ -3,3 +3,4 @@ openai
 pandas
 streamlit-mic-recorder
 pydub
+streamlit_webrtc 
