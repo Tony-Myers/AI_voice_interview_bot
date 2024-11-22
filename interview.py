@@ -1,17 +1,17 @@
 import streamlit as st
-from streamlit_mic_recorder import mic_recorder
-import openai
+from openai import OpenAI
 import pandas as pd
 import base64
 import io
-from openai import OpenAI
+from streamlit_mic_recorder import mic_recorder
+from pydub import AudioSegment
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
 PASSWORD = st.secrets["password"]
 OPENAI_API_KEY = st.secrets["openai_api_key"]
 
 # Initialize OpenAI client
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # List of interview topics
 interview_topics = [
@@ -42,7 +42,6 @@ def generate_response(prompt, conversation_history=None):
             {"role": "user", "content": prompt}
         ]
 
-        client = OpenAI(api_key=OPENAI_API_KEY)
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
@@ -50,8 +49,7 @@ def generate_response(prompt, conversation_history=None):
             n=1,
             temperature=0.6,
         )
-        return response.choices[0].message.content
-    
+        return response.choices[0].message['content']
     except Exception as e:
         return f"An error occurred in generate_response: {str(e)}"
 
@@ -116,7 +114,10 @@ def main():
             audio_file = io.BytesIO(st.session_state.audio_bytes)
             audio_file.name = "user_response.wav"
             try:
-                transcript = openai.Audio.transcribe("whisper-1", audio_file)
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
                 user_answer = transcript['text']
                 st.write(f"Transcribed Text: {user_answer}")
             except Exception as e:
@@ -150,4 +151,19 @@ def main():
                 # Add AI's response to conversation history
                 st.session_state.conversation.append({"role": "assistant", "content": ai_response})
 
-                # Update current question with
+                # Update current question with AI's follow-up
+                st.session_state.current_question = ai_response
+
+                # Set submitted flag to true
+                st.session_state.submitted = True
+
+                st.experimental_rerun()
+            else:
+                st.warning("Please provide an answer before submitting.")
+
+        # Option to end the interview
+        if st.button("End Interview"):
+            st.success("Interview completed! Thank you for your insights on AI in education.")
+            st.session_state
+::contentReference[oaicite:0]{index=0}
+ 
