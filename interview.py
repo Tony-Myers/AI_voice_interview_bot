@@ -3,7 +3,7 @@ from openai import OpenAI  # Updated import for client-based interface
 import pandas as pd
 import base64
 import io
-from streamlit_mic_recorder import st_mic_recorder  # Ensure correct import based on package documentation
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, ClientSettings
 from pydub import AudioSegment
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
@@ -56,6 +56,15 @@ def get_transcript_download_link(conversation):
     href = f'<a href="data:file/csv;base64,{b64}" download="interview_transcript.csv">Download Transcript</a>'
     return href
 
+# Custom Audio Processor to capture audio data
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.audio_data = []
+
+    def recv(self, frame):
+        self.audio_data.append(frame.to_ndarray())
+        return frame
+
 def main():
     # Password authentication
     if "authenticated" not in st.session_state:
@@ -106,33 +115,45 @@ def main():
 
         st.write("**You can respond by recording your voice or typing your answer below:**")
 
-        # Voice input section
-        recorder = st_mic_recorder(sampling_rate=16000)
-        if not st.session_state.get("recording", False):
-            if st.button("Start Recording"):
-                st.session_state.recording = True
-                recorder.start()
-        else:
-            if st.button("Stop Recording"):
-                recorder.stop()
-                st.session_state.recording = False
-
-        audio_bytes = recorder.get_audio()
-        if audio_bytes:
-            st.audio(audio_bytes, format="audio/wav")
+        # Voice input section using streamlit-webrtc
+        webrtc_ctx = webrtc_streamer(
+            key="audio_recorder",
+            mode="audio",
+            client_settings=ClientSettings(
+                rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+                media_stream_constraints={"audio": True, "video": False},
+            ),
+            audio_processor_factory=AudioProcessor,
+            async_processing=True,
+        )
 
         user_answer = ""
 
-        # Transcribe audio using OpenAI's Whisper API
-        if audio_bytes and not st.session_state.get("audio_processed", False):
-            st.session_state["audio_processed"] = True
-            audio_file = io.BytesIO(audio_bytes)
-            audio_file.name = "user_response.wav"
+        # Process recorded audio
+        if webrtc_ctx.audio_processor and webrtc_ctx.audio_processor.audio_data:
+            # Concatenate all audio frames
+            audio_frames = webrtc_ctx.audio_processor.audio_data
+            audio_np = np.concatenate(audio_frames, axis=0)
+            # Convert numpy array to bytes
+            audio_bytes = audio_np.tobytes()
+
+            # Convert raw audio to WAV format using pydub
+            audio_segment = AudioSegment(
+                data=audio_bytes,
+                sample_width=2,  # 16-bit audio
+                frame_rate=16000,
+                channels=1
+            )
+            wav_io = io.BytesIO()
+            audio_segment.export(wav_io, format="wav")
+            wav_io.seek(0)
+
+            # Transcribe audio using OpenAI's Whisper API
             try:
                 with st.spinner("Transcribing audio..."):
                     transcript = client.audio.transcriptions.create(
                         model="whisper-1",
-                        file=audio_file
+                        file=wav_io
                     )
                 user_answer = transcript['text']
                 st.write(f"**Transcribed Text:** {user_answer}")
@@ -168,7 +189,7 @@ def main():
 
                 # Reset flags
                 st.session_state.submitted = True
-                st.session_state.audio_processed = False
+                webrtc_ctx.audio_processor.audio_data = []
 
                 st.experimental_rerun()
             else:
@@ -188,10 +209,5 @@ def main():
         st.markdown(get_transcript_download_link(st.session_state.conversation), unsafe_allow_html=True)
 
 if __name__ == "__main__":
+    import numpy as np  # Added import for numpy
     main()
-
-        
-
-  
-
-
