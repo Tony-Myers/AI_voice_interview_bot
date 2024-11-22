@@ -1,9 +1,9 @@
 import streamlit as st
-from openai import OpenAI
+from openai import OpenAI  # Updated import for client-based interface
 import pandas as pd
 import base64
 import io
-from streamlit_mic_recorder import mic_recorder
+from streamlit_mic_recorder import st_mic_recorder  # Ensure correct import based on package documentation
 from pydub import AudioSegment
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
@@ -27,25 +27,21 @@ interview_topics = [
 
 total_questions = len(interview_topics)  # Total number of interview topics for progress bar
 
-def generate_response(prompt, conversation_history=None):
+def generate_response(conversation_history):
     try:
-        if conversation_history is None:
-            conversation_history = []
-
         system_content = """You are an experienced and considerate interviewer in higher education, focusing on AI applications. Use British English in your responses, including spellings like 'democratised'. Ensure your responses are complete and not truncated. 
-        After each user response, provide brief feedback and ask a relevant follow-up question based on their answer. Tailor your questions to the user's previous responses, avoiding repetition and exploring areas they haven't covered. Be adaptive and create a natural flow of conversation."""
+After each user response, provide brief feedback and ask a relevant follow-up question based on their answer. Tailor your questions to the user's previous responses, avoiding repetition and exploring areas they haven't covered. Be adaptive and create a natural flow of conversation."""
 
         messages = [
             {"role": "system", "content": system_content},
             {"role": "system", "content": f"Interview topics: {interview_topics}"},
             *conversation_history[-6:],  # Include the last 6 exchanges for more context
-            {"role": "user", "content": prompt}
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=messages,
-            max_tokens=110,
+            max_tokens=300,
             n=1,
             temperature=0.6,
         )
@@ -66,11 +62,13 @@ def main():
         st.session_state.authenticated = False
 
     if not st.session_state.authenticated:
+        st.title("Secure AI Interview Bot Access")
         password = st.text_input("Enter password to access the interview app:", type="password")
         if st.button("Submit"):
             if password == PASSWORD:
                 st.session_state.authenticated = True
                 st.success("Access granted.")
+                st.experimental_rerun()
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -84,47 +82,62 @@ def main():
         st.session_state.current_question = "Let's begin the interview. Can you please introduce yourself, your role in higher education, and your interest in AI?"
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
+    if "interview_ended" not in st.session_state:
+        st.session_state.interview_ended = False
+
+    if st.session_state.interview_ended:
+        st.write("The interview has ended. Thank you for your participation!")
+        if st.session_state.conversation:
+            st.markdown(get_transcript_download_link(st.session_state.conversation), unsafe_allow_html=True)
+        return
 
     st.write("""
+    **Informed Consent:**
+
     Before we begin, please read the information sheet provided and understand that by ticking yes, you will be giving your written informed consent for your responses to be used for research purposes and may be anonymously quoted in publications.
 
-    You can choose to end the interview at any time and request your data be removed by emailing tony.myers@staff.ac.uk. This interview will be conducted by an AI assistant who, along with asking set questions, will ask additional probing questions depending on your response.
+    You can choose to end the interview at any time and request your data be removed by emailing [tony.myers@staff.ac.uk](mailto:tony.myers@staff.ac.uk). This interview will be conducted by an AI assistant who, along with asking set questions, will ask additional probing questions depending on your response.
     """)
 
     consent = st.checkbox("I have read the information sheet and give my consent to participate in this interview.")
 
     if consent:
-        st.write(st.session_state.current_question)
+        st.write(f"**Question:** {st.session_state.current_question}")
+
+        st.write("**You can respond by recording your voice or typing your answer below:**")
 
         # Voice input section
-        st.write("You can respond by recording your voice or typing your answer below:")
+        recorder = st_mic_recorder(sampling_rate=16000)
+        if not st.session_state.get("recording", False):
+            if st.button("Start Recording"):
+                st.session_state.recording = True
+                recorder.start()
+        else:
+            if st.button("Stop Recording"):
+                recorder.stop()
+                st.session_state.recording = False
 
-        # Initialize audio_bytes in session state
-        if "audio_bytes" not in st.session_state:
-            st.session_state.audio_bytes = None
-
-        # Record audio
-        audio_bytes = mic_recorder()
+        audio_bytes = recorder.get_audio()
         if audio_bytes:
-            st.session_state.audio_bytes = audio_bytes
             st.audio(audio_bytes, format="audio/wav")
 
+        user_answer = ""
+
         # Transcribe audio using OpenAI's Whisper API
-        if st.session_state.audio_bytes:
-            audio_file = io.BytesIO(st.session_state.audio_bytes)
+        if audio_bytes and not st.session_state.get("audio_processed", False):
+            st.session_state["audio_processed"] = True
+            audio_file = io.BytesIO(audio_bytes)
             audio_file.name = "user_response.wav"
             try:
-                transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file
-                )
+                with st.spinner("Transcribing audio..."):
+                    transcript = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file
+                    )
                 user_answer = transcript['text']
-                st.write(f"Transcribed Text: {user_answer}")
+                st.write(f"**Transcribed Text:** {user_answer}")
             except Exception as e:
                 st.error(f"An error occurred during transcription: {str(e)}")
-                user_answer = ""
-        else:
-            user_answer = ""
 
         # Text input as an alternative
         text_input = st.text_area("Or type your response:", key=f"user_input_{len(st.session_state.conversation)}")
@@ -135,18 +148,17 @@ def main():
 
         # Progress bar with a label indicating interview progress
         completed_questions = len([entry for entry in st.session_state.conversation if entry['role'] == "user"])
-        progress_percentage = completed_questions / total_questions
+        progress_percentage = min(completed_questions / total_questions, 1.0)  # Ensure it doesn't exceed 100%
         st.write(f"**Interview Progress: {completed_questions} out of {total_questions} questions answered**")
         st.progress(progress_percentage)
 
         if st.button("Submit Answer"):
-            if user_answer:
+            if user_answer.strip():
                 # Add user's answer to conversation history
-                st.session_state.conversation.append({"role": "user", "content": user_answer})
+                st.session_state.conversation.append({"role": "user", "content": user_answer.strip()})
 
                 # Generate AI response
-                ai_prompt = f"User's answer: {user_answer}\nProvide feedback and ask a follow-up question."
-                ai_response = generate_response(ai_prompt, st.session_state.conversation)
+                ai_response = generate_response(st.session_state.conversation)
 
                 # Add AI's response to conversation history
                 st.session_state.conversation.append({"role": "assistant", "content": ai_response})
@@ -154,8 +166,9 @@ def main():
                 # Update current question with AI's follow-up
                 st.session_state.current_question = ai_response
 
-                # Set submitted flag to true
+                # Reset flags
                 st.session_state.submitted = True
+                st.session_state.audio_processed = False
 
                 st.experimental_rerun()
             else:
@@ -163,7 +176,22 @@ def main():
 
         # Option to end the interview
         if st.button("End Interview"):
-            st.success("Interview completed! Thank you for your insights on AI in education.")
-            st.session_state
-::contentReference[oaicite:0]{index=0}
- 
+            st.success("Interview completed! Thank you for your insights into AI use in your education.")
+            st.session_state.interview_ended = True
+            st.experimental_rerun()
+
+    else:
+        st.warning("You must provide consent to participate in the interview.")
+
+    # Display transcript download link if interview has ended
+    if st.session_state.interview_ended and st.session_state.conversation:
+        st.markdown(get_transcript_download_link(st.session_state.conversation), unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
+
+        
+
+  
+
+
