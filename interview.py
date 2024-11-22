@@ -75,10 +75,13 @@ def main():
         st.title("Secure AI Interview Bot Access")
         password = st.text_input("Enter password to access the interview app:", type="password")
         if st.button("Submit"):
-    if password == PASSWORD:
-        st.session_state.authenticated = True
-        st.success("Access granted.")
-        st.rerun()
+if password == PASSWORD:
+    st.session_state.authenticated = True
+    st.success("Access granted.")
+    st.rerun()
+else:
+    st.error("Incorrect password.")
+
     else:
         st.error("Incorrect password.")
 
