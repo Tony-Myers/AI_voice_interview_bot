@@ -4,6 +4,7 @@ import openai
 import pandas as pd
 import base64
 import io
+from openai import OpenAI
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
 PASSWORD = st.secrets["password"]
@@ -41,14 +42,16 @@ def generate_response(prompt, conversation_history=None):
             {"role": "user", "content": prompt}
         ]
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o",
             messages=messages,
             max_tokens=110,
             n=1,
             temperature=0.6,
         )
-        return response.choices[0].message['content']
+        return response.choices[0].message.content
+    
     except Exception as e:
         return f"An error occurred in generate_response: {str(e)}"
 
