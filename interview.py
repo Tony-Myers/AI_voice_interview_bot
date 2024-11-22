@@ -5,6 +5,7 @@ import base64
 import io
 from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, ClientSettings
 from pydub import AudioSegment
+import numpy as np  # Ensure numpy is imported
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
 PASSWORD = st.secrets["password"]
@@ -209,5 +210,4 @@ def main():
         st.markdown(get_transcript_download_link(st.session_state.conversation), unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    import numpy as np  # Added import for numpy
     main()
