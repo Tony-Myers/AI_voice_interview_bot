@@ -75,16 +75,10 @@ def main():
         st.title("Secure AI Interview Bot Access")
         password = st.text_input("Enter password to access the interview app:", type="password")
         if st.button("Submit"):
-if password == PASSWORD:
-    st.session_state.authenticated = True
-    st.success("Access granted.")
-    st.rerun()
-else:
-    st.error("Incorrect password.")
-
-    else:
-        st.error("Incorrect password.")
-
+            if password == PASSWORD:
+                st.session_state.authenticated = True
+                st.success("Access granted.")
+                st.rerun()  # Updated from st.experimental_rerun() to st.rerun()
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -196,9 +190,10 @@ else:
 
                 # Reset flags
                 st.session_state.submitted = True
-                webrtc_ctx.audio_processor.audio_data = []
+                if webrtc_ctx.audio_processor:
+                    webrtc_ctx.audio_processor.audio_data = []
 
-                st.experimental_rerun()
+                st.rerun()  # Updated from st.experimental_rerun() to st.rerun()
             else:
                 st.warning("Please provide an answer before submitting.")
 
@@ -206,7 +201,7 @@ else:
         if st.button("End Interview"):
             st.success("Interview completed! Thank you for your insights into AI use in your education.")
             st.session_state.interview_ended = True
-            st.experimental_rerun()
+            st.rerun()  # Updated from st.experimental_rerun() to st.rerun()
 
     else:
         st.warning("You must provide consent to participate in the interview.")
