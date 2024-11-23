@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI  # Updated import for client-based interface
+from openai import OpenAI  # Ensure OpenAI's client-based interface is correct
 import pandas as pd
 import base64
 import io
