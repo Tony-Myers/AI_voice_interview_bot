@@ -1,6 +1,7 @@
 streamlit
 openai
 pandas
-pydub
-streamlit_webrtc 
 numpy
+pydub
+streamlit-webrtc
+gTTS
