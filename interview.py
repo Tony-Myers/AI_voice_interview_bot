@@ -1,15 +1,12 @@
 import streamlit as st
-import openai
 from openai import OpenAI
 import pandas as pd
 import base64
 import tempfile
 import os
 from pydub import AudioSegment
-from pydub.playback import play
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings, AudioProcessorBase
 import numpy as np
-import queue
 from gtts import gTTS
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
@@ -38,9 +35,9 @@ def generate_response(prompt, conversation_history=None):
         if conversation_history is None:
             conversation_history = []
 
-        system_content = """You are an experienced and considerate interviewer in higher education, focusing on AI applications. Use British English in your responses, including spellings like 'democratised'. Ensure your responses are complete and not truncated. 
+        system_content = """You are an experienced and considerate interviewer in higher education, focusing on AI applications. Use British English in your responses, including spellings like 'democratised'. Ensure your responses are complete and not truncated.
         After each user response, provide brief feedback and ask a relevant follow-up question based on their answer. Tailor your questions to the user's previous responses, avoiding repetition and exploring areas they haven't covered. Be adaptive and create a natural flow of conversation."""
-        
+
         messages = [
             {"role": "system", "content": system_content},
             {"role": "system", "content": f"Interview topics: {interview_topics}"},
@@ -49,7 +46,7 @@ def generate_response(prompt, conversation_history=None):
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             max_tokens=110,
             n=1,
@@ -92,10 +89,14 @@ def get_transcript_download_link(conversation):
 class AudioProcessor(AudioProcessorBase):
     def __init__(self):
         self.audio_frames = []
+        self.sample_rate = None
 
     def recv_audio(self, frame):
         # Collect audio frames
-        self.audio_frames.append(frame.to_ndarray())
+        audio_data = frame.to_ndarray()
+        self.audio_frames.append(audio_data)
+        if self.sample_rate is None:
+            self.sample_rate = frame.sample_rate
         return frame
 
 def main():
@@ -125,8 +126,8 @@ def main():
 
     st.write("""
     Before we begin, please read the information sheet provided and understand that by ticking yes, you will be giving your written informed consent for your responses to be used for research purposes and may be anonymously quoted in publications.
-    
-    You can choose to end the interview at any time and request your data be removed by emailing tony.myers@staff.ac.uk. This interview will be conducted by an AI assistant who, along with asking set questions, will ask additional probing questions depending on your response.
+
+    You can choose to end the interview at any time and request your data be removed by emailing [your_email@example.com]. This interview will be conducted by an AI assistant who, along with asking set questions, will ask additional probing questions depending on your response.
     """)
 
     consent = st.checkbox("I have read the information sheet and give my consent to participate in this interview.")
@@ -142,7 +143,6 @@ def main():
             os.remove(audio_file_path)
 
         # Initialize audio processor for recording user response
-        audio_processor = AudioProcessor()
         webrtc_ctx = webrtc_streamer(
             key="speech-to-text",
             mode=WebRtcMode.SENDONLY,
@@ -163,49 +163,54 @@ def main():
                 st.write("Processing your response...")
 
                 # Retrieve audio frames from the processor
-                audio_frames = webrtc_ctx.audio_processor.audio_frames
+                audio_processor = webrtc_ctx.audio_processor
+                if audio_processor:
+                    audio_frames = audio_processor.audio_frames
+                    sample_rate = audio_processor.sample_rate
 
-                if audio_frames:
-                    # Convert audio frames to a single audio segment
-                    audio_data = np.concatenate(audio_frames, axis=0).astype(np.int16)
+                    if audio_frames:
+                        # Convert audio frames to a single audio segment
+                        audio_data = np.concatenate(audio_frames, axis=0).astype(np.int16)
 
-                    # Save the audio data to a temporary file
-                    audio_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
-                    with open(audio_file_path, "wb") as f:
-                        audio_segment = AudioSegment(
-                            data=audio_data.tobytes(),
-                            sample_width=2,
-                            frame_rate=webrtc_ctx.client_settings.audio_frame_rate,
-                            channels=1
-                        )
-                        audio_segment.export(f, format="wav")
+                        # Save the audio data to a temporary file
+                        audio_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+                        with open(audio_file_path, "wb") as f:
+                            audio_segment = AudioSegment(
+                                data=audio_data.tobytes(),
+                                sample_width=2,
+                                frame_rate=sample_rate,
+                                channels=1
+                            )
+                            audio_segment.export(f, format="wav")
 
-                    # Transcribe the audio using OpenAI's Whisper API
-                    user_response = transcribe_audio(audio_file_path)
-                    os.remove(audio_file_path)
+                        # Transcribe the audio using OpenAI's Whisper API
+                        user_response = transcribe_audio(audio_file_path)
+                        os.remove(audio_file_path)
 
-                    if user_response:
-                        # Add user's answer to conversation history
-                        st.session_state.conversation.append({"role": "user", "content": user_response})
+                        if user_response:
+                            # Add user's answer to conversation history
+                            st.session_state.conversation.append({"role": "user", "content": user_response})
 
-                        # Generate AI response
-                        ai_prompt = f"User's answer: {user_response}\nProvide feedback and ask a follow-up question."
-                        ai_response = generate_response(ai_prompt, st.session_state.conversation)
+                            # Generate AI response
+                            ai_prompt = f"User's answer: {user_response}\nProvide feedback and ask a follow-up question."
+                            ai_response = generate_response(ai_prompt, st.session_state.conversation)
 
-                        # Add AI's response to conversation history
-                        st.session_state.conversation.append({"role": "assistant", "content": ai_response})
+                            # Add AI's response to conversation history
+                            st.session_state.conversation.append({"role": "assistant", "content": ai_response})
 
-                        # Update current question with AI's follow-up
-                        st.session_state.current_question = ai_response
+                            # Update current question with AI's follow-up
+                            st.session_state.current_question = ai_response
 
-                        # Set submitted flag to true
-                        st.session_state.submitted = True
+                            # Set submitted flag to true
+                            st.session_state.submitted = True
 
-                        st.experimental_rerun()
+                            st.experimental_rerun()
+                        else:
+                            st.warning("Could not transcribe the audio. Please try again.")
                     else:
-                        st.warning("Could not transcribe the audio. Please try again.")
+                        st.warning("No audio recorded. Please try again.")
                 else:
-                    st.warning("No audio recorded. Please try again.")
+                    st.warning("Audio processor is not available. Please try again.")
 
         # Option to end the interview
         if st.button("End Interview"):
