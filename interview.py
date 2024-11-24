@@ -110,7 +110,7 @@ def main():
             if password == PASSWORD:
                 st.session_state.authenticated = True
                 st.success("Access granted.")
-                st.rerun()
+                st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -204,7 +204,7 @@ def main():
                             st.session_state.submitted = True
 
                             # Rerun the app to update the UI
-                            st.rerun()
+                            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
                         else:
                             st.warning("Could not transcribe the audio. Please try again.")
                     else:
@@ -230,7 +230,7 @@ def main():
         if st.button("Restart Interview"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.rerun()
+            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
