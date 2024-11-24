@@ -5,3 +5,5 @@ numpy
 pydub
 streamlit-webrtc
 gTTS
+aiortc
+aioice
