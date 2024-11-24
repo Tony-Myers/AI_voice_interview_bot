@@ -46,7 +46,7 @@ def generate_response(prompt, conversation_history=None):
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=messages,
             max_tokens=110,
             n=1,
@@ -110,6 +110,8 @@ def main():
             if password == PASSWORD:
                 st.session_state.authenticated = True
                 st.success("Access granted.")
+                # Use st.experimental_rerun() to refresh the page after authentication
+                st.rerun()  # <-- Changed here
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -204,7 +206,8 @@ def main():
                             # Set submitted flag to true
                             st.session_state.submitted = True
 
-                            st.experimental_rerun()
+                            # Rerun the app to update the UI
+                            st.rerun()  # <-- Changed here
                         else:
                             st.warning("Could not transcribe the audio. Please try again.")
                     else:
@@ -230,7 +233,8 @@ def main():
         if st.button("Restart Interview"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.experimental_rerun()
+            st.rerun()  # <-- Changed here
 
 if __name__ == "__main__":
     main()
+
