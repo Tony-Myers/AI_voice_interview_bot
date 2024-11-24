@@ -5,7 +5,7 @@ import base64
 import tempfile
 import os
 from pydub import AudioSegment
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings, AudioProcessorBase
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, AudioProcessorBase
 import numpy as np
 from gtts import gTTS
 
@@ -110,8 +110,7 @@ def main():
             if password == PASSWORD:
                 st.session_state.authenticated = True
                 st.success("Access granted.")
-                # Use st.experimental_rerun() to refresh the page after authentication
-                st.rerun()  # <-- Changed here
+                st.rerun()
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -148,12 +147,10 @@ def main():
         webrtc_ctx = webrtc_streamer(
             key="speech-to-text",
             mode=WebRtcMode.SENDONLY,
-            client_settings=ClientSettings(
-                rtc_configuration={
-                    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-                },
-                media_stream_constraints={"audio": True, "video": False},
-            ),
+            rtc_configuration={
+                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            },
+            media_stream_constraints={"audio": True, "video": False},
             audio_processor_factory=AudioProcessor,
             async_processing=True,
         )
@@ -207,7 +204,7 @@ def main():
                             st.session_state.submitted = True
 
                             # Rerun the app to update the UI
-                            st.rerun()  # <-- Changed here
+                            st.rerun()
                         else:
                             st.warning("Could not transcribe the audio. Please try again.")
                     else:
@@ -233,8 +230,7 @@ def main():
         if st.button("Restart Interview"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.rerun()  # <-- Changed here
+            st.rerun()
 
 if __name__ == "__main__":
     main()
-
