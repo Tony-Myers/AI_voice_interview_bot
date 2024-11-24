@@ -1,21 +1,23 @@
 import streamlit as st
 import openai
+from openai import OpenAI
 import pandas as pd
 import base64
 import tempfile
 import os
 from pydub import AudioSegment
 from pydub.playback import play
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, ClientSettings
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings, AudioProcessorBase
 import numpy as np
 import queue
+from gtts import gTTS
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
 PASSWORD = st.secrets["password"]
 OPENAI_API_KEY = st.secrets["openai_api_key"]
 
 # Initialize OpenAI API client
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # List of interview topics
 interview_topics = [
@@ -46,36 +48,36 @@ def generate_response(prompt, conversation_history=None):
             {"role": "user", "content": prompt}
         ]
 
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=110,
             n=1,
             temperature=0.6,
         )
-        return response.choices[0].message['content']
+        return response.choices[0].message.content
     except Exception as e:
         return f"An error occurred in generate_response: {str(e)}"
 
 def synthesize_speech(text):
     try:
-        response = openai.Audio.create(
-            model="gpt-4o-audio-preview",
-            input=text,
-            output_format="mp3"
-        )
-        return response['data']
+        tts = gTTS(text=text, lang='en', tld='co.uk')
+        audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        tts.save(audio_file.name)
+        audio_file.close()
+        return audio_file.name
     except Exception as e:
         st.error(f"An error occurred in synthesize_speech: {str(e)}")
         return None
 
-def transcribe_audio(audio_file):
+def transcribe_audio(audio_file_path):
     try:
-        response = openai.Audio.transcribe(
-            model="whisper-1",
-            file=audio_file
-        )
-        return response['text']
+        with open(audio_file_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-1"
+            )
+        return transcription.text
     except Exception as e:
         st.error(f"An error occurred in transcribe_audio: {str(e)}")
         return None
@@ -89,11 +91,11 @@ def get_transcript_download_link(conversation):
 
 class AudioProcessor(AudioProcessorBase):
     def __init__(self):
-        self.audio_queue = queue.Queue()
+        self.audio_frames = []
 
-    def recv(self, frame):
-        audio = frame.to_ndarray()
-        self.audio_queue.put(audio)
+    def recv_audio(self, frame):
+        # Collect audio frames
+        self.audio_frames.append(frame.to_ndarray())
         return frame
 
 def main():
@@ -133,26 +135,24 @@ def main():
         # Synthesize and play the current question
         st.write("**Interviewer:**")
         st.write(st.session_state.current_question)
-        audio_data = synthesize_speech(st.session_state.current_question)
-        if audio_data:
-            audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-            audio_file.write(audio_data)
-            audio_file.close()
-            audio_segment = AudioSegment.from_file(audio_file.name)
-            play(audio_segment)
-            os.remove(audio_file.name)
+        audio_file_path = synthesize_speech(st.session_state.current_question)
+        if audio_file_path:
+            audio_data = open(audio_file_path, 'rb').read()
+            st.audio(audio_data, format='audio/mp3')
+            os.remove(audio_file_path)
 
         # Initialize audio processor for recording user response
         audio_processor = AudioProcessor()
         webrtc_ctx = webrtc_streamer(
             key="speech-to-text",
-            mode=ClientSettings(
+            mode=WebRtcMode.SENDONLY,
+            client_settings=ClientSettings(
                 rtc_configuration={
                     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
                 },
                 media_stream_constraints={"audio": True, "video": False},
             ),
-            audio_processor_factory=lambda: audio_processor,
+            audio_processor_factory=AudioProcessor,
             async_processing=True,
         )
 
@@ -163,29 +163,26 @@ def main():
                 st.write("Processing your response...")
 
                 # Retrieve audio frames from the processor
-                audio_frames = []
-                while not audio_processor.audio_queue.empty():
-                    frame = audio_processor.audio_queue.get()
-                    audio_frames.append(frame)
+                audio_frames = webrtc_ctx.audio_processor.audio_frames
 
                 if audio_frames:
                     # Convert audio frames to a single audio segment
-                    audio_segment = AudioSegment(
-                        data=np.concatenate(audio_frames).tobytes(),
-                        sample_width=2,
-                        frame_rate=webrtc_ctx.audio_processor.sample_rate,
-                        channels=1,
-                    )
+                    audio_data = np.concatenate(audio_frames, axis=0).astype(np.int16)
 
-                    # Save the audio segment to a temporary file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as audio_file:
-                        audio_segment.export(audio_file.name, format="wav")
+                    # Save the audio data to a temporary file
+                    audio_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+                    with open(audio_file_path, "wb") as f:
+                        audio_segment = AudioSegment(
+                            data=audio_data.tobytes(),
+                            sample_width=2,
+                            frame_rate=webrtc_ctx.client_settings.audio_frame_rate,
+                            channels=1
+                        )
+                        audio_segment.export(f, format="wav")
 
                     # Transcribe the audio using OpenAI's Whisper API
-                    with open(audio_file.name, "rb") as audio_file:
-                        user_response = transcribe_audio(audio_file)
-
-                    os.remove(audio_file.name)
+                    user_response = transcribe_audio(audio_file_path)
+                    os.remove(audio_file_path)
 
                     if user_response:
                         # Add user's answer to conversation history
@@ -232,5 +229,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
- 
