@@ -5,12 +5,9 @@ import base64
 import tempfile
 import os
 from pydub import AudioSegment
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, AudioProcessorBase
 import numpy as np
 from gtts import gTTS
-import warnings
-
-# Suppress SyntaxWarnings
-warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 # Retrieve the password and OpenAI API key from Streamlit secrets
 PASSWORD = st.secrets["password"]
@@ -57,8 +54,7 @@ def generate_response(prompt, conversation_history=None):
         )
         return response.choices[0].message.content
     except Exception as e:
-        st.error(f"An error occurred in generate_response: {str(e)}")
-        return None
+        return f"An error occurred in generate_response: {str(e)}"
 
 def synthesize_speech(text):
     try:
@@ -69,7 +65,6 @@ def synthesize_speech(text):
         return audio_file.name
     except Exception as e:
         st.error(f"An error occurred in synthesize_speech: {str(e)}")
-        print(f"Debug: synthesize_speech error: {e}")
         return None
 
 def transcribe_audio(audio_file_path):
@@ -91,6 +86,19 @@ def get_transcript_download_link(conversation):
     href = f'<a href="data:file/csv;base64,{b64}" download="interview_transcript.csv">Download Transcript</a>'
     return href
 
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.audio_frames = []
+        self.sample_rate = None
+
+    def recv_audio(self, frame):
+        # Collect audio frames
+        audio_data = frame.to_ndarray()
+        self.audio_frames.append(audio_data)
+        if self.sample_rate is None:
+            self.sample_rate = frame.sample_rate
+        return frame
+
 def main():
     # Password authentication
     if "authenticated" not in st.session_state:
@@ -102,7 +110,7 @@ def main():
             if password == PASSWORD:
                 st.session_state.authenticated = True
                 st.success("Access granted.")
-                st.rerun()
+                st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -134,45 +142,75 @@ def main():
             audio_data = open(audio_file_path, 'rb').read()
             st.audio(audio_data, format='audio/mp3')
             os.remove(audio_file_path)
-        else:
-            st.warning("Text-to-speech failed. Please read the question above.")
 
-        # File uploader for user's audio response
-        st.write("Please record your response and upload the audio file (MP3 or WAV).")
-        audio_file = st.file_uploader("Upload your audio response:", type=["mp3", "wav"])
+        # Initialize audio processor for recording user response
+        webrtc_ctx = webrtc_streamer(
+            key="speech-to-text",
+            mode=WebRtcMode.SENDONLY,
+            rtc_configuration={
+                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            },
+            media_stream_constraints={"audio": True, "video": False},
+            audio_processor_factory=AudioProcessor,
+            async_processing=True,
+        )
 
-        if audio_file is not None:
-            st.write("Processing your response...")
-            # Save uploaded file temporarily
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
-                temp_audio_file.write(audio_file.read())
-                temp_audio_file_path = temp_audio_file.name
+        if webrtc_ctx.state.playing:
+            st.write("Recording... Please answer the question.")
+            if st.button("Stop Recording"):
+                webrtc_ctx.stop()
+                st.write("Processing your response...")
 
-            # Transcribe the audio
-            user_response = transcribe_audio(temp_audio_file_path)
-            os.remove(temp_audio_file_path)
+                # Retrieve audio frames from the processor
+                audio_processor = webrtc_ctx.audio_processor
+                if audio_processor:
+                    audio_frames = audio_processor.audio_frames
+                    sample_rate = audio_processor.sample_rate
 
-            if user_response:
-                # Add user's answer to conversation history
-                st.session_state.conversation.append({"role": "user", "content": user_response})
+                    if audio_frames:
+                        # Convert audio frames to a single audio segment
+                        audio_data = np.concatenate(audio_frames, axis=0).astype(np.int16)
 
-                # Generate AI response
-                ai_prompt = f"User's answer: {user_response}\nProvide feedback and ask a follow-up question."
-                ai_response = generate_response(ai_prompt, st.session_state.conversation)
+                        # Save the audio data to a temporary file
+                        audio_file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+                        with open(audio_file_path, "wb") as f:
+                            audio_segment = AudioSegment(
+                                data=audio_data.tobytes(),
+                                sample_width=2,
+                                frame_rate=sample_rate,
+                                channels=1
+                            )
+                            audio_segment.export(f, format="wav")
 
-                # Add AI's response to conversation history
-                st.session_state.conversation.append({"role": "assistant", "content": ai_response})
+                        # Transcribe the audio using OpenAI's Whisper API
+                        user_response = transcribe_audio(audio_file_path)
+                        os.remove(audio_file_path)
 
-                # Update current question with AI's follow-up
-                st.session_state.current_question = ai_response
+                        if user_response:
+                            # Add user's answer to conversation history
+                            st.session_state.conversation.append({"role": "user", "content": user_response})
 
-                # Set submitted flag to true
-                st.session_state.submitted = True
+                            # Generate AI response
+                            ai_prompt = f"User's answer: {user_response}\nProvide feedback and ask a follow-up question."
+                            ai_response = generate_response(ai_prompt, st.session_state.conversation)
 
-                # Rerun the app to update the UI
-                st.rerun()
-            else:
-                st.warning("Could not transcribe the audio. Please try again.")
+                            # Add AI's response to conversation history
+                            st.session_state.conversation.append({"role": "assistant", "content": ai_response})
+
+                            # Update current question with AI's follow-up
+                            st.session_state.current_question = ai_response
+
+                            # Set submitted flag to true
+                            st.session_state.submitted = True
+
+                            # Rerun the app to update the UI
+                            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
+                        else:
+                            st.warning("Could not transcribe the audio. Please try again.")
+                    else:
+                        st.warning("No audio recorded. Please try again.")
+                else:
+                    st.warning("Audio processor is not available. Please try again.")
 
         # Option to end the interview
         if st.button("End Interview"):
@@ -192,7 +230,7 @@ def main():
         if st.button("Restart Interview"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.rerun()
+            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
