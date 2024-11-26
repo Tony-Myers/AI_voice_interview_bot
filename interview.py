@@ -7,14 +7,20 @@ import os
 from pydub import AudioSegment
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, AudioProcessorBase
 import numpy as np
-from gtts import gTTS
+from pyht import Client
+from pyht.client import TTSOptions
 
-# Retrieve the password and OpenAI API key from Streamlit secrets
+# Retrieve the password, OpenAI API key, Play.ht User ID, and API key from Streamlit secrets
 PASSWORD = st.secrets["password"]
 OPENAI_API_KEY = st.secrets["openai_api_key"]
+PLAY_HT_USER_ID = st.secrets["play_ht_user_id"]
+PLAY_HT_API_KEY = st.secrets["play_ht_api_key"]
 
 # Initialize OpenAI API client
-client = OpenAI(api_key=OPENAI_API_KEY)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Initialize Play.ht client
+playht_client = Client(user_id=PLAY_HT_USER_ID, api_key=PLAY_HT_API_KEY)
 
 # List of interview topics
 interview_topics = [
@@ -45,7 +51,7 @@ def generate_response(prompt, conversation_history=None):
             {"role": "user", "content": prompt}
         ]
 
-        response = client.chat.completions.create(
+        response = openai_client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=110,
@@ -58,10 +64,16 @@ def generate_response(prompt, conversation_history=None):
 
 def synthesize_speech(text):
     try:
-        tts = gTTS(text=text, lang='en', tld='co.uk')
+        options = TTSOptions(
+            voice="en_us_male",  # Replace with your desired voice
+            format=TTSOptions.Format.FORMAT_MP3,
+            sample_rate=24000
+        )
+        audio_chunks = playht_client.tts(text, options)
         audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        tts.save(audio_file.name)
-        audio_file.close()
+        with open(audio_file.name, "wb") as f:
+            for chunk in audio_chunks:
+                f.write(chunk)
         return audio_file.name
     except Exception as e:
         st.error(f"An error occurred in synthesize_speech: {str(e)}")
@@ -70,7 +82,7 @@ def synthesize_speech(text):
 def transcribe_audio(audio_file_path):
     try:
         with open(audio_file_path, "rb") as audio_file:
-            transcription = client.audio.transcriptions.create(
+            transcription = openai_client.audio.transcriptions.create(
                 file=audio_file,
                 model="whisper-1"
             )
@@ -110,7 +122,7 @@ def main():
             if password == PASSWORD:
                 st.session_state.authenticated = True
                 st.success("Access granted.")
-                st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
+                st.experimental_rerun()
             else:
                 st.error("Incorrect password.")
         return  # Stop the app here if not authenticated
@@ -139,8 +151,10 @@ def main():
         st.write(st.session_state.current_question)
         audio_file_path = synthesize_speech(st.session_state.current_question)
         if audio_file_path:
-            audio_data = open(audio_file_path, 'rb').read()
-            st.audio(audio_data, format='audio/mp3')
+            audio_data = open
+            with open(audio_file_path, 'rb') as audio_file:
+                audio_bytes = audio_file.read()
+                st.audio(audio_bytes, format='audio/mp3')
             os.remove(audio_file_path)
 
         # Initialize audio processor for recording user response
@@ -204,7 +218,7 @@ def main():
                             st.session_state.submitted = True
 
                             # Rerun the app to update the UI
-                            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
+                            st.experimental_rerun()
                         else:
                             st.warning("Could not transcribe the audio. Please try again.")
                     else:
@@ -230,7 +244,9 @@ def main():
         if st.button("Restart Interview"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
+
+ 
