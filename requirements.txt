@@ -1,9 +1,7 @@
 streamlit
 openai
 pandas
-numpy
 pydub
 streamlit-webrtc
-gTTS
-aiortc
-aioice
+numpy
+pyht
