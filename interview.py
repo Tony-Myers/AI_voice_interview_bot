@@ -67,23 +67,20 @@ import traceback
 def synthesize_speech(text):
     try:
         options = TTSOptions(
-            voice="en_us_male",
-            format='mp3',
+            voice="en_us_male",  # Replace with your desired voice
+            format='wav',  # Use a supported format
             sample_rate=24000
         )
         audio_chunks = playht_client.tts(text, options)
-        if not audio_chunks:
-            raise ValueError("Received empty audio chunks from Play.ht API.")
-        audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         with open(audio_file.name, "wb") as f:
             for chunk in audio_chunks:
                 f.write(chunk)
         return audio_file.name
     except Exception as e:
-        error_message = f"An error occurred in synthesize_speech: {str(e)}"
-        error_trace = traceback.format_exc()
-        st.error(f"{error_message}\n{error_trace}")
+        st.error(f"An error occurred in synthesize_speech: {str(e)}")
         return None
+
 
 
 def transcribe_audio(audio_file_path):
