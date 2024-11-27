@@ -65,8 +65,8 @@ def generate_response(prompt, conversation_history=None):
 def synthesize_speech(text):
     try:
         options = TTSOptions(
-            voice="en_us_male",  # Replace with your desired voice
-            format=TTSOptions.Format.FORMAT_MP3,
+            voice="en_us_male",  
+            format='mp3',  
             sample_rate=24000
         )
         audio_chunks = playht_client.tts(text, options)
