@@ -62,22 +62,29 @@ def generate_response(prompt, conversation_history=None):
     except Exception as e:
         return f"An error occurred in generate_response: {str(e)}"
 
+import traceback
+
 def synthesize_speech(text):
     try:
         options = TTSOptions(
-            voice="en_us_male",  
-            format='mp3',  
+            voice="en_us_male",
+            format='mp3',
             sample_rate=24000
         )
         audio_chunks = playht_client.tts(text, options)
+        if not audio_chunks:
+            raise ValueError("Received empty audio chunks from Play.ht API.")
         audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         with open(audio_file.name, "wb") as f:
             for chunk in audio_chunks:
                 f.write(chunk)
         return audio_file.name
     except Exception as e:
-        st.error(f"An error occurred in synthesize_speech: {str(e)}")
+        error_message = f"An error occurred in synthesize_speech: {str(e)}"
+        error_trace = traceback.format_exc()
+        st.error(f"{error_message}\n{error_trace}")
         return None
+
 
 def transcribe_audio(audio_file_path):
     try:
