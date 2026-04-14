@@ -37,7 +37,7 @@ elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 # ── Interview Topics ──────────────────────────────────────────────────
 INTERVIEW_TOPICS = [
     "Introduction and personal background",
-    "Shifting perspectives on generative AI",
+    "Shifting perspectives on generative AI development and use",
     "Perceptions on workflow using generative AI tools in research contexts",
     "Perceived benefits of generative AI in research",
     "Challenges faced when using generative AI in quantitaive research",
