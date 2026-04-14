@@ -152,14 +152,28 @@ def synthesize_speech(text: str) -> bytes | None:
         return None
 
 
+# Whisper prompt — biases the decoder toward expected vocabulary.
+# Include terms that are likely to appear in the interview so that
+# Whisper does not substitute common-sounding alternatives.
+WHISPER_PROMPT = (
+    "This is an academic interview about generative AI in higher education. "
+    "The participant may mention: quantitative methods, qualitative methods, "
+    "mixed methods, Bayesian statistics, sport science, research methodology, "
+    "programme, module, lecturer, professor, pedagogy, assessment, "
+    "prompt engineering, large language models, ChatGPT, generative AI, "
+    "higher education, Birmingham Newman University."
+)
+
+
 def transcribe_audio(audio_file_path: str) -> str | None:
     """Transcribe audio via the Groq-hosted Whisper model."""
     try:
         with open(audio_file_path, "rb") as f:
             transcription = groq_client.audio.transcriptions.create(
                 file=f,
-                model="whisper-large-v3-turbo",
+                model="whisper-large-v3",
                 language="en",
+                prompt=WHISPER_PROMPT,
             )
         return transcription.text
     except Exception as e:
