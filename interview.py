@@ -37,17 +37,17 @@ elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 # ── Interview Topics ──────────────────────────────────────────────────
 INTERVIEW_TOPICS = [
     "Introduction and personal background",
-    "Shifting perspectives on generative AI development and use",
+    "Shifting perspectives on generative AI",
     "Perceptions on workflow using generative AI tools in research contexts",
     "Perceived benefits of generative AI in research",
-    "Challenges faced when using generative AI in quantitaive research",
+    "Challenges faced when using generative AI in quantitive research",
     "Challenges faced when using generative AI in qualitative research",
     "Impact on academic development and research training"
 ]
 TOTAL_TOPICS = len(INTERVIEW_TOPICS)
 
 OPENING_QUESTION = (
-    "Let us begin the interview. Could you please introduce yourself,"
+    "Let us begin the interview. Could you please introduce yourself, "
     "your role in higher education, and your interest in AI?"
 )
 
@@ -226,7 +226,7 @@ def main():
         "informed consent for your responses to be used for research purposes "
         "and may be anonymously quoted in publications.\n\n"
         "You can choose to end the interview at any time and request your data "
-        "be removed by emailing [your_email@example.com]. This interview will "
+        "be removed by emailing [tony.myers@staff.newman.ac.uk]. This interview will "
         "be conducted by an AI assistant who, along with asking set questions, "
         "will ask additional probing questions depending on your response."
     )
