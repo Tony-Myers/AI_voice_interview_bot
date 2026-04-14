@@ -62,9 +62,21 @@ class AudioRecorder:
         self._lock = threading.Lock()
 
     def callback(self, frame: av.AudioFrame) -> av.AudioFrame:
-        """WebRTC audio_frame_callback — runs on the WebRTC thread."""
+        """WebRTC audio_frame_callback — runs on the WebRTC thread.
+
+        av.AudioFrame.to_ndarray() returns shape (channels, samples) for
+        planar formats (e.g. fltp) or (1, samples) for packed formats.
+        Calling .flatten() on a multi-channel array interleaves L/R samples
+        and produces garbled audio. We must take only the first channel.
+        """
         with self._lock:
-            self._frames.append(frame.to_ndarray().flatten())
+            arr = frame.to_ndarray()
+            # arr shape is typically (channels, samples) — take first channel only
+            if arr.ndim == 2:
+                mono = arr[0]
+            else:
+                mono = arr
+            self._frames.append(mono.copy())
             if self._sample_rate is None:
                 self._sample_rate = frame.sample_rate
         return frame
@@ -147,6 +159,7 @@ def transcribe_audio(audio_file_path: str) -> str | None:
             transcription = groq_client.audio.transcriptions.create(
                 file=f,
                 model="whisper-large-v3-turbo",
+                language="en",
             )
         return transcription.text
     except Exception as e:
