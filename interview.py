@@ -17,7 +17,7 @@ DEEPSEEK_API_KEY = st.secrets["deepseek_api_key"]
 GROQ_API_KEY = st.secrets["groq_api_key"]
 ELEVENLABS_API_KEY = st.secrets["elevenlabs_api_key"]
 # Optional: override the default ElevenLabs voice in secrets
-ELEVENLABS_VOICE_ID = st.secrets.get("elevenlabs_voice_id", "onwK4e9ZLuTAKqWW03F9")
+ELEVENLABS_VOICE_ID = st.secrets.get("elevenlabs_voice_id", "6fZce9LFNG3iEITDfqZZ")
 
 # ── API Clients ────────────────────────────────────────────────────────
 # DeepSeek uses the OpenAI-compatible endpoint
